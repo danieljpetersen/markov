@@ -12,13 +12,15 @@
 #include <algorithm>
 #include <chrono>
 
+// todo better rng - rng here is just for standalone example
+
 // my attempt at porting https://github.com/Tw1ddle/markov-namegen-lib - http://www.roguebasin.com/index.php?title=Names_from_a_high_order_Markov_Process_and_a_simplified_Katz_back-off_scheme
 // yes, haxe can transpile to c++, but i took a look at the generated output and scratched my head
 
 namespace fi
 {
 	template <typename T>
-	void vectorInsertUnique(std::vector<T> &Vector, T Element)
+	static void vectorInsertUnique(std::vector<T> &Vector, T Element)
 	{
 		bool Contains = false;
 		for (int i = 0; i < Vector.size(); ++i)
@@ -43,9 +45,9 @@ namespace fi
 		std::string Output = std::string("");
 		for (int i = 0; i < n; ++i)
 		{
-            Output += str;
-        }
-        return Output;
+			Output += str;
+		}
+		return Output;
 	}
 
 	// ----
@@ -58,10 +60,10 @@ namespace fi
 
 	// ----
 
-	static std::string strReplaceAll(std::string &str, const std::string& from, const std::string& to)
+	static std::string strReplaceAll(std::string& str, const std::string& from, const std::string& to)
 	{
 		size_t start_pos = 0;
-		while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+		while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
 			str.replace(start_pos, from.length(), to);
 			start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
 		}
@@ -108,14 +110,12 @@ namespace fi
 		 */
 		Model(std::vector<std::string> data, unsigned int order, float prior, std::vector<std::string> alphabet)
 		{
-			if (order < 1 ) { order = 1; }
+			if (order < 1) { order = 1; }
 			if (prior < 0.0f) { prior = 0.0f; }
-			if (prior > 1.0f) { prior = 1.0f; }
+			if (prior > 0.1f) { prior = 0.1f; }
 			this->order = order;
 			this->prior = prior;
 			this->alphabet = alphabet;
-
-			std::srand(std::time(nullptr));
 
 			train(data);
 			buildChains();
@@ -125,7 +125,7 @@ namespace fi
 		 * Attempts to generate the next letter in the word given the context (the previous "order" letters).
 		 * @param   context The previous "order" letters in the word.
 		 */
-		std::optional<std::string> generate(std::string &context)
+		std::optional<std::string> generate(std::string& context)
 		{
 			auto it = chains.find(context);
 			if (it == chains.end())
@@ -134,7 +134,7 @@ namespace fi
 			}
 			else
 			{
-				return alphabet[selectIndex(&chains[context])];
+				return alphabet[selectIndex(&(*it).second)];
 			}
 		}
 
@@ -159,7 +159,7 @@ namespace fi
 				std::string d = data.back();
 				data.pop_back();
 				d = strRepeat("#", order) + d + "#";
-				int len = d.size() - order;
+				int len = (int)d.size() - order;
 				for (int i = 0; i < len; ++i)
 				{
 					auto key = substrStartEndIndex(d, i, i + order);
@@ -191,8 +191,7 @@ namespace fi
 			int count = 0;
 			for (int i = 0; i < arr.size(); ++i)
 			{
-				std::string s = arr[i];
-				if (s == v)
+				if (arr[i] == v)
 				{
 					count++;
 				}
@@ -210,7 +209,7 @@ namespace fi
 				accumulator += (*chain).at(i);
 				totals.push_back(accumulator);
 			}
-			float r = ((double) rand() / (RAND_MAX)) * accumulator;
+			float r = ((double) rand() / (RAND_MAX)) * accumulator; // todo better rng this is just for standalone example
 			for (int i = 0; i < totals.size(); i++)
 			{
 				if (r < totals[i])
@@ -265,6 +264,12 @@ namespace fi
 		 */
 		Generator(std::vector<std::string> data, unsigned int order, float prior, bool backoff)
 		{
+
+			for (int i = 0; i < data.size(); i++)
+			{
+				transform(data[i].begin(), data[i].end(), data[i].begin(), ::tolower);
+			}
+
 			this->order = order;
 			this->prior = prior;
 			this->backoff = backoff;
@@ -275,34 +280,20 @@ namespace fi
 			{
 				for (int i = 0; i < word.size(); i++)
 				{
-					vectorInsertUnique<std::string>(letters, std::string(1, word[i]));
+					vectorInsertUnique(letters, std::string(1, word[i]));
 				}
 			}
 
 			std::sort(letters.begin(), letters.end());
-			//std::reverse(letters.begin(), letters.end());
-			//std::sort(letters.begin(), letters.end(), [](const auto &a, const auto &b) -> bool
-			//{
-			//	if (a < b)
-			//	{
-			//		return -1;
-			//	}
-			//	if (a > b)
-			//	{
-			//		return 1;
-			//	}
-			//
-			//	return 0;
-			//});
 
-			std::vector<std::string> domain({"#"});
+			std::vector<std::string> domain({ "#" });
 			domain.insert(domain.end(), letters.begin(), letters.end());
 
 			// create models
 			models.clear();
-			if(this->backoff)
+			if (this->backoff)
 			{
-				for (int i = 0; i < order; i++)
+				for (size_t i = 0; i < order; i++)
 				{
 					models.push_back(Model(data, order - i, prior, domain)); // From highest to lowest order
 				}
@@ -324,22 +315,10 @@ namespace fi
 			auto letter = getLetter(word);
         	while (letter.has_value() && letter.value() != "#")
         	{
-        		if (letter.has_value())
-				{
-       				word = word + letter.value();
-				}
-
+       			word = word + letter.value();
+			
 				letter = getLetter(word);
 	        }
-
-        	if (letter.has_value())
-			{
-        		std::cout << (letter.value()) << "\n";
-			}
-        	else
-			{
-        		std::cout << "no has value" << "\n";
-			}
 
     	    return word;
 		}
@@ -403,11 +382,24 @@ namespace fi
 		 * Creates a word within the given constraints.
 		 * @return  A word that meets the specified constraints, or null if the generated word did not meet the constraints.
 		 */
-		std::string generateName()
+		std::string generateName(int minNameLength, int maxNameLength)
 		{
-			std::string name = generator.generate();
+			std::string name;
 
-			strReplaceAll(name, std::string("#"), std::string(""));
+			int tryCount = 0;
+			while (tryCount < 20)
+			{
+				name = generator.generate();
+
+				strReplaceAll(name, std::string("#"), std::string(""));
+
+				if ((name.size() >= minNameLength) && (name.size() <= maxNameLength))
+				{
+					break;
+				}
+
+				++tryCount;
+			}
 
 			return name;
 		}
